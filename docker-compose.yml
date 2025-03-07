@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=sarv_marg_secret_key_for_development
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/sarv_marg
+      - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_api_key_here}
+      - FLASK_APP=run.py
+      - FLASK_ENV=development
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      - db
+    command: >
+      bash -c "python init_db.py && 
+              gunicorn --bind 0.0.0.0:5000 run:app"
+    restart: unless-stopped
+
+  db:
+    image: postgres:14
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sarv_marg
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

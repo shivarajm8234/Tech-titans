@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}Report Road Blockage - Sarv Marg{% endblock %}
+
+{% block extra_css %}
+<style>
+    #camera-container {
+        position: relative;
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+    }
+    #camera-feed {
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    #capture-btn {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background-color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+    }
+    #capture-btn:hover {
+        background-color: #f8f9fa;
+    }
+    #captured-image {
+        width: 100%;
+        border-radius: 8px;
+        display: none;
+        margin-bottom: 20px;
+    }
+    .camera-controls {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    #location-info {
+        margin-top: 20px;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-camera me-2"></i>Report Road Blockage</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Please allow camera and location access to report a road blockage. The system will verify the authenticity of your report.
+                </div>
+                
+                <!-- Camera Feed -->
+                <div id="camera-container">
+                    <video id="camera-feed" autoplay playsinline></video>
+                    <div id="capture-btn">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                </div>
+                
+                <!-- Camera Controls -->
+                <div class="camera-controls">
+                    <button id="start-camera" class="btn btn-primary">
+                        <i class="fas fa-video me-2"></i>Start Camera
+                    </button>
+                    <button id="switch-camera" class="btn btn-secondary" disabled>
+                        <i class="fas fa-sync me-2"></i>Switch Camera
+                    </button>
+                </div>
+                
+                <!-- Captured Image -->
+                <img id="captured-image" alt="Captured Image">
+                
+                <!-- Location Information -->
+                <div id="location-info" class="mb-3">
+                    <h5><i class="fas fa-map-marker-alt me-2"></i>Location Information</h5>
+                    <div id="coordinates">Fetching location...</div>
+                </div>
+                
+                <!-- Upload Form -->
+                <form id="upload-form" method="POST" action="{{ url_for('main.upload_post') }}" enctype="multipart/form-data" class="mt-4">
+                    <input type="file" id="image-input" name="image" accept="image/*" class="d-none">
+                    
+                    <!-- Hidden fields for user location -->
+                    <input type="hidden" id="user-latitude" name="user_latitude" value="">
+                    <input type="hidden" id="user-longitude" name="user_longitude" value="">
+                    <input type="hidden" id="location-accuracy" name="location_accuracy" value="">
+                    
+                    <div class="mb-3">
+                        <label for="caption" class="form-label">Caption</label>
+                        <textarea class="form-control" id="caption" name="caption" rows="3" placeholder="Describe the road blockage..." required></textarea>
+                    </div>
+                    
+                    <div class="mb-3" id="location-status">
+                        <div class="alert alert-info d-none" id="location-info">
+                            <i class="fas fa-location-arrow me-2"></i> <span id="location-message">Detecting your location...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+                            <i class="fas fa-upload me-2"></i>Upload Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // DOM elements
+    const cameraFeed = document.getElementById('camera-feed');
+    const captureBtn = document.getElementById('capture-btn');
+    const startCameraBtn = document.getElementById('start-camera');
+    const switchCameraBtn = document.getElementById('switch-camera');
+    const capturedImage = document.getElementById('captured-image');
+    const locationInfo = document.getElementById('location-info');
+    const coordinatesDisplay = document.getElementById('coordinates');
+    const imageInput = document.getElementById('image-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const uploadForm = document.getElementById('upload-form');
+    
+    // Global variables
+    let stream;
+    let currentFacingMode = 'environment'; // Start with back camera
+    let latitude, longitude, locationAccuracy;
+    
+    // Get user location
+    function getUserLocation() {
+        const locationInfo = document.getElementById('location-info');
+        const locationMessage = document.getElementById('location-message');
+        
+        // Show location status
+        locationInfo.classList.remove('d-none');
+        locationMessage.textContent = 'Detecting your location...';
+        
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                // Success callback
+                (position) => {
+                    latitude = position.coords.latitude;
+                    longitude = position.coords.longitude;
+                    locationAccuracy = position.coords.accuracy;
+                    
+                    // Update hidden form fields
+                    document.getElementById('user-latitude').value = latitude;
+                    document.getElementById('user-longitude').value = longitude;
+                    document.getElementById('location-accuracy').value = locationAccuracy;
+                    
+                    // Update UI
+                    locationInfo.classList.remove('alert-info', 'alert-danger');
+                    locationInfo.classList.add('alert-success');
+                    locationMessage.textContent = `Location detected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                    console.log(`Location detected: ${latitude}, ${longitude} (accuracy: ${locationAccuracy}m)`);
+                },
+                // Error callback
+                (error) => {
+                    console.error('Error getting location:', error);
+                    locationInfo.classList.remove('alert-info', 'alert-success');
+                    locationInfo.classList.add('alert-warning');
+                    
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            locationMessage.textContent = 'Location access denied. Using CNN-based coordinates.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            locationMessage.textContent = 'Location unavailable. Using CNN-based coordinates.';
+                            break;
+                        case error.TIMEOUT:
+                            locationMessage.textContent = 'Location request timed out. Using CNN-based coordinates.';
+                            break;
+                        default:
+                            locationMessage.textContent = 'Location error. Using CNN-based coordinates.';
+                    }
+                },
+                // Options
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            locationInfo.classList.remove('alert-info', 'alert-success');
+            locationInfo.classList.add('alert-warning');
+            locationMessage.textContent = 'Geolocation not supported by your browser. Using CNN-based coordinates.';
+        }
+    }
+    
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get user location as soon as the page loads
+        getUserLocation();
+    });
+    
+    // Start camera
+    startCameraBtn.addEventListener('click', async () => {
+        try {
+            // Request camera and location permissions
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode },
+                audio: false
+            });
+            
+            // Show video stream
+            cameraFeed.srcObject = stream;
+            
+            // Enable camera controls
+            captureBtn.style.display = 'flex';
+            switchCameraBtn.disabled = false;
+            startCameraBtn.disabled = true;
+            
+            // Get location
+            getLocation();
+            
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            alert('Could not access the camera. Please check permissions and try again.');
+        }
+    });
+    
+    // Switch camera (front/back)
+    switchCameraBtn.addEventListener('click', async () => {
+        if (stream) {
+            // Stop current stream
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Toggle facing mode
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            
+            // Get new stream
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode },
+                    audio: false
+                });
+                
+                // Update video stream
+                cameraFeed.srcObject = stream;
+            } catch (error) {
+                console.error('Error switching camera:', error);
+                alert('Could not switch camera. Please try again.');
+            }
+        }
+    });
+    
+    // Capture image
+    captureBtn.addEventListener('click', () => {
+        // Create canvas to capture frame
+        const canvas = document.createElement('canvas');
+        canvas.width = cameraFeed.videoWidth;
+        canvas.height = cameraFeed.videoHeight;
+        
+        // Draw current frame to canvas
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
+        
+        // Add location information to the image (in the bottom-right corner)
+        if (latitude && longitude) {
+            // Set text properties
+            ctx.font = '14px Arial';
+            ctx.fillStyle = 'rgba(220, 53, 69, 0.8)'; // Light red, semi-transparent
+            
+            // Draw location text
+            const locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            const textWidth = ctx.measureText(locationText).width;
+            ctx.fillText(locationText, canvas.width - textWidth - 10, canvas.height - 10);
+            
+            // Draw the last character in a lighter red to mark authenticity
+            const lastCharPos = canvas.width - 10;
+            ctx.fillStyle = 'rgba(220, 53, 69, 0.4)'; // Lighter red
+            ctx.fillText(locationText.charAt(locationText.length - 1), lastCharPos, canvas.height - 10);
+        }
+        
+        // Convert canvas to blob
+        canvas.toBlob((blob) => {
+            // Create a File object
+            const file = new File([blob], 'captured_image.jpg', { type: 'image/jpeg' });
+            
+            // Create a FileList-like object
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            
+            // Set the file input's files
+            imageInput.files = dataTransfer.files;
+            
+            // Display the captured image
+            capturedImage.src = URL.createObjectURL(blob);
+            capturedImage.style.display = 'block';
+            
+            // Hide camera feed and capture button
+            cameraFeed.style.display = 'none';
+            captureBtn.style.display = 'none';
+            
+            // Enable submit button
+            submitBtn.disabled = false;
+            
+        }, 'image/jpeg', 0.95);
+    });
+    
+    // Get user's location
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    // Store coordinates
+                    latitude = position.coords.latitude;
+                    longitude = position.coords.longitude;
+                    
+                    // Display coordinates
+                    coordinatesDisplay.innerHTML = `
+                        <strong>Latitude:</strong> ${latitude.toFixed(6)}<br>
+                        <strong>Longitude:</strong> ${longitude.toFixed(6)}
+                    `;
+                    
+                    // Show location info
+                    locationInfo.style.display = 'block';
+                },
+                (error) => {
+                    console.error('Error getting location:', error);
+                    coordinatesDisplay.innerHTML = 'Could not get location. Please enable location services.';
+                    locationInfo.style.display = 'block';
+                }
+            );
+        } else {
+            coordinatesDisplay.innerHTML = 'Geolocation is not supported by this browser.';
+            locationInfo.style.display = 'block';
+        }
+    }
+    
+    // Form submission
+    uploadForm.addEventListener('submit', (event) => {
+        if (!imageInput.files.length) {
+            event.preventDefault();
+            alert('Please capture an image first.');
+        }
+    });
+</script>
+{% endblock %}

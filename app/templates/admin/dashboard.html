@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Sarv Marg{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        transition: transform 0.3s;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    .stat-icon {
+        font-size: 2.5rem;
+        opacity: 0.8;
+    }
+    .chart-container {
+        height: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Admin Dashboard</h4>
+                <div>
+                    <a href="{{ url_for('admin.user_management') }}" class="btn btn-light btn-sm">
+                        <i class="fas fa-users me-1"></i>Manage Users
+                    </a>
+                    <a href="{{ url_for('admin.post_management') }}" class="btn btn-light btn-sm ms-2">
+                        <i class="fas fa-images me-1"></i>Manage Posts
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card shadow stat-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase">Total Users</h6>
+                        <h2 class="mb-0">{{ stats.total_users }}</h2>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                </div>
+                <p class="mt-3 mb-0">
+                    <span class="text-white-50">{{ stats.new_users_last_week }} new this week</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card shadow stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase">Active Users</h6>
+                        <h2 class="mb-0">{{ stats.active_users }}</h2>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-user-check"></i>
+                    </div>
+                </div>
+                <p class="mt-3 mb-0">
+                    <span class="text-white-50">{{ (stats.active_users / stats.total_users * 100)|round|int }}% of total users</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card shadow stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase">Total Posts</h6>
+                        <h2 class="mb-0">{{ stats.total_posts }}</h2>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-camera"></i>
+                    </div>
+                </div>
+                <p class="mt-3 mb-0">
+                    <span class="text-white-50">{{ stats.new_posts_last_week }} new this week</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card shadow stat-card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase">Authentic Posts</h6>
+                        <h2 class="mb-0">{{ stats.authentic_posts }}</h2>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                </div>
+                <p class="mt-3 mb-0">
+                    <span class="text-white-50">{{ (stats.authentic_posts / stats.total_posts * 100)|round|int if stats.total_posts > 0 else 0 }}% authenticity rate</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts and Tables -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>User Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="userChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Post Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="postChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-trophy me-2"></i>Top Contributors</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Posts</th>
+                                <th>Contribution</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in stats.top_users %}
+                            <tr>
+                                <td>{{ user.username }}</td>
+                                <td>{{ user.post_count }}</td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: {{ (user.post_count / stats.total_posts * 100)|round|int if stats.total_posts > 0 else 0 }}%">
+                                            {{ (user.post_count / stats.total_posts * 100)|round|int if stats.total_posts > 0 else 0 }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if stats.top_users|length == 0 %}
+                            <tr>
+                                <td colspan="3" class="text-center">No posts yet</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // User statistics chart
+    const userCtx = document.getElementById('userChart').getContext('2d');
+    const userChart = new Chart(userCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Total Users', 'Regular Users', 'Admins', 'Active Users', 'New Users'],
+            datasets: [{
+                label: 'User Statistics',
+                data: [
+                    {{ stats.total_users }}, 
+                    {{ stats.total_regular_users }}, 
+                    {{ stats.total_admins }}, 
+                    {{ stats.active_users }}, 
+                    {{ stats.new_users_last_week }}
+                ],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(153, 102, 255, 0.7)',
+                    'rgba(255, 159, 64, 0.7)',
+                    'rgba(255, 99, 132, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)',
+                    'rgba(255, 159, 64, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+    
+    // Post statistics chart
+    const postCtx = document.getElementById('postChart').getContext('2d');
+    const postChart = new Chart(postCtx, {
+        type: 'pie',
+        data: {
+            labels: ['Authentic Posts', 'Non-Authentic Posts'],
+            datasets: [{
+                data: [
+                    {{ stats.authentic_posts }}, 
+                    {{ stats.total_posts - stats.authentic_posts }}
+                ],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(255, 99, 132, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,662 @@
+{% extends "base.html" %}
+
+{% block title %}Sarv Marg - Smart Navigation{% endblock %}
+
+{% block extra_css %}
+<style>
+    #map {
+        height: 75vh;
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .action-buttons {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 1000;
+    }
+    .action-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        font-size: 24px;
+    }
+    .blockage-popup {
+        max-width: 350px;
+    }
+    .blockage-popup img {
+        max-width: 100%;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        cursor: pointer;
+    }
+    .analysis-modal .modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .severity-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        margin-left: 5px;
+    }
+    .severity-Minor {
+        background-color: #28a745;
+        color: white;
+    }
+    .severity-Moderate {
+        background-color: #ffc107;
+        color: black;
+    }
+    .severity-Major {
+        background-color: #fd7e14;
+        color: white;
+    }
+    .severity-Severe {
+        background-color: #dc3545;
+        color: white;
+    }
+    .factor-item {
+        background-color: #f8f9fa;
+        padding: 8px 12px;
+        margin: 5px 0;
+        border-radius: 4px;
+        border-left: 3px solid #007bff;
+    }
+    .auth-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        display: none;
+    }
+    .auth-card {
+        max-width: 400px;
+        width: 90%;
+        background-color: white;
+        border-radius: 8px;
+        padding: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow">
+            <div class="card-body p-0">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="action-buttons">
+    <a href="{{ url_for('main.get_directions') }}" class="btn btn-info action-btn" title="Get Directions">
+        <i class="fas fa-directions"></i>
+    </a>
+    <a href="{{ url_for('main.upload_post') }}" class="btn btn-primary action-btn" title="Report Blockage">
+        <i class="fas fa-plus"></i>
+    </a>
+</div>
+
+<!-- Authentication Overlay (for non-logged in users) -->
+<div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+        <h4 class="text-center mb-4">Login Required</h4>
+        <p class="text-center">You need to login to access this feature.</p>
+        <div class="d-grid gap-2">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-primary">Register</a>
+            <button class="btn btn-outline-secondary" onclick="closeAuthOverlay()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Analysis Modal -->
+<div class="modal fade analysis-modal" id="analysisModal" tabindex="-1" aria-labelledby="analysisModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="analysisModalLabel">Blockage Analysis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="analysisModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading analysis...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize the map
+    const map = L.map('map').setView([20.5937, 78.9629], 5); // Center on India
+
+    // Add OpenStreetMap tile layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Get user's location if available
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const userLat = position.coords.latitude;
+                const userLng = position.coords.longitude;
+                
+                // Center map on user's location
+                map.setView([userLat, userLng], 13);
+                
+                // Add marker for user's location
+                L.marker([userLat, userLng])
+                    .addTo(map)
+                    .bindPopup('Your Location')
+                    .openPopup();
+            },
+            (error) => {
+                console.log('Error getting location:', error);
+            }
+        );
+    }
+
+    // Custom icon CSS class for map
+    const customIconCSS = `
+        .custom-div-icon {
+            background: #fff;
+            border: 2px solid #3388ff;
+            border-radius: 50%;
+            text-align: center;
+            color: #3388ff;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .custom-div-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    `;
+    
+    // Add the CSS to the document
+    const style = document.createElement('style');
+    style.textContent = customIconCSS;
+    document.head.appendChild(style);
+    
+    // Load blockage posts from the API
+    fetch('/posts')
+        .then(response => response.json())
+        .then(posts => {
+            posts.forEach(post => {
+                // Create custom icon with image preview if available
+                let marker;
+                
+                if (post.image_path) {
+                    // Create a custom div icon with the blockage image
+                    const customIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<img src="/static/${post.image_path}" alt="Blockage">`,
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20],
+                        popupAnchor: [0, -20]
+                    });
+                    
+                    marker = L.marker([post.latitude, post.longitude], { icon: customIcon }).addTo(map);
+                } else {
+                    // Fallback to default marker if no image
+                    marker = L.marker([post.latitude, post.longitude]).addTo(map);
+                }
+                
+                // Create popup content
+                const popupContent = document.createElement('div');
+                popupContent.className = 'blockage-popup';
+                
+                // Add image if available
+                if (post.image_path) {
+                    const img = document.createElement('img');
+                    img.src = `/static/${post.image_path}`;
+                    img.alt = 'Road Blockage';
+                    img.dataset.postId = post.id;
+                    img.addEventListener('click', function() {
+                        showAnalysisModal(post.id);
+                    });
+                    popupContent.appendChild(img);
+                }
+                
+                // Add caption
+                const caption = document.createElement('p');
+                caption.textContent = post.caption;
+                popupContent.appendChild(caption);
+                
+                // Add estimated blockage time
+                const timeInfo = document.createElement('p');
+                timeInfo.innerHTML = `<strong>Estimated blockage time:</strong> ${post.estimated_blockage_time} minutes`;
+                popupContent.appendChild(timeInfo);
+                
+                // Add timestamp
+                const timestamp = document.createElement('small');
+                timestamp.className = 'text-muted d-block';
+                timestamp.textContent = `Reported: ${new Date(post.created_at).toLocaleString()}`;
+                popupContent.appendChild(timestamp);
+                
+                // Add coordinate source information if available
+                if (post.metadata && post.metadata.coordinate_source) {
+                    const coordInfo = document.createElement('small');
+                    coordInfo.className = 'coordinate-info text-muted d-block';
+                    
+                    let coordText = `Location source: ${post.metadata.coordinate_source}`;
+                    
+                    // Add confidence score for CNN-verified coordinates
+                    if (post.metadata.coordinate_source === 'CNN-verified' && post.metadata.confidence_score) {
+                        coordText += ` (Confidence: ${parseFloat(post.metadata.confidence_score).toFixed(2)})`;
+                    }
+                    
+                    coordInfo.textContent = coordText;
+                    popupContent.appendChild(coordInfo);
+                }
+                
+                // Add view analysis button if analysis is available
+                if (post.has_analysis) {
+                    const analysisBtn = document.createElement('button');
+                    analysisBtn.className = 'btn btn-sm btn-outline-primary mt-2';
+                    analysisBtn.textContent = 'View Detailed Analysis';
+                    analysisBtn.dataset.postId = post.id;
+                    analysisBtn.addEventListener('click', function() {
+                        showAnalysisModal(post.id);
+                    });
+                    popupContent.appendChild(analysisBtn);
+                }
+                
+                // Bind popup to marker
+                marker.bindPopup(popupContent);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching posts:', error);
+        });
+        
+    // Function to show analysis modal
+    function showAnalysisModal(postId) {
+        const modalBody = document.getElementById('analysisModalBody');
+        modalBody.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading analysis...</p>
+            </div>
+        `;
+        
+        // Show the modal
+        const analysisModal = new bootstrap.Modal(document.getElementById('analysisModal'));
+        analysisModal.show();
+        
+        // Fetch the detailed post data
+        fetch(`/post/${postId}`)
+            .then(response => response.json())
+            .then(post => {
+                let modalContent = '';
+                
+                // Add image with carousel for same location posts
+                if (post.image_path) {
+                    // Fetch all posts at this location
+                    fetch(`/posts/location/${post.latitude.toFixed(4)}/${post.longitude.toFixed(4)}`)
+                        .then(response => response.json())
+                        .then(locationPosts => {
+                            if (locationPosts.length > 1) {
+                                // Multiple posts at this location - create carousel
+                                const carouselId = `carousel-detail-${postId}`;
+                                let carouselContent = `
+                                    <div id="${carouselId}" class="carousel slide mb-4" data-bs-ride="carousel">
+                                        <div class="carousel-inner">
+                                `;
+                                
+                                // Add all images to carousel
+                                locationPosts.forEach((locationPost, index) => {
+                                    if (locationPost.image_path) {
+                                        const isActive = locationPost.id === post.id ? 'active' : '';
+                                        carouselContent += `
+                                            <div class="carousel-item ${isActive}" data-post-id="${locationPost.id}">
+                                                <img src="/static/${locationPost.image_path}" class="d-block w-100 img-fluid rounded" alt="Road Blockage" style="max-height: 300px; object-fit: contain;">
+                                                <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-50 rounded">
+                                                    <p class="small mb-0">Reported: ${new Date(locationPost.created_at).toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                });
+                                
+                                // Add carousel controls
+                                carouselContent += `
+                                        </div>
+                                        <button class="carousel-control-prev" type="button" data-bs-target="#${carouselId}" data-bs-slide="prev">
+                                            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Previous</span>
+                                        </button>
+                                        <button class="carousel-control-next" type="button" data-bs-target="#${carouselId}" data-bs-slide="next">
+                                            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Next</span>
+                                        </button>
+                                        <div class="text-center mt-2">
+                                            <small class="text-muted">${locationPosts.length} reports at this location</small>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Insert carousel at the beginning of modal content
+                                modalContent = carouselContent + modalContent;
+                                updateModalContent();
+                                
+                                // Add event listener for carousel slide event to update blockage report
+                                const carousel = document.getElementById(carouselId);
+                                carousel.addEventListener('slid.bs.carousel', function(event) {
+                                    const activeSlide = event.target.querySelector('.carousel-item.active');
+                                    const activePostId = activeSlide.dataset.postId;
+                                    
+                                    // Fetch complete post data including AI analysis for the active slide
+                                    fetch(`/post/${activePostId}`)
+                                        .then(response => response.json())
+                                        .then(activePost => {
+                                            // Update the blockage report and analysis sections
+                                            updateBlockageReport(activePost);
+                                        })
+                                        .catch(error => {
+                                            console.error('Error fetching post details for carousel slide:', error);
+                                            // Fallback to the basic post data without analysis
+                                            const basicPost = locationPosts.find(p => p.id == activePostId);
+                                            if (basicPost) {
+                                                updateBlockageReport(basicPost);
+                                            }
+                                        });
+                                });
+                            } else {
+                                // Single image case
+                                modalContent = `
+                                    <div class="text-center mb-4">
+                                        <img src="/static/${post.image_path}" alt="Road Blockage" class="img-fluid rounded" style="max-height: 300px;">
+                                    </div>
+                                ` + modalContent;
+                                updateModalContent();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching location posts:', error);
+                            // Fallback to single image
+                            modalContent = `
+                                <div class="text-center mb-4">
+                                    <img src="/static/${post.image_path}" alt="Road Blockage" class="img-fluid rounded" style="max-height: 300px;">
+                                </div>
+                            ` + modalContent;
+                            updateModalContent();
+                        });
+                }
+                
+                // Add caption and basic info
+                modalContent += `
+                    <div class="mb-4 blockage-report-section">
+                        <h5>Blockage Report</h5>
+                        <p>${post.caption}</p>
+                        <div class="d-flex justify-content-between flex-wrap">
+                            <span><strong>Reported:</strong> ${new Date(post.created_at).toLocaleString()}</span>
+                            <span><strong>Coordinates:</strong> ${post.latitude.toFixed(6)}, ${post.longitude.toFixed(6)}</span>
+                        </div>
+                        <div class="mt-2">
+                            <span><strong>Upload Time:</strong> ${post.upload_time || 'Not available'}</span>
+                        </div>
+                    </div>
+                `;
+                
+                // Add AI analysis if available
+                modalContent += `
+                    <div class="card mb-4">
+                        <div class="analysis-section">
+                `;
+                
+                if (post.analysis) {
+                    const severity = post.analysis.severity || 'Unknown';
+                    modalContent += `
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">AI Analysis</h5>
+                                <span class="severity-badge severity-${severity}">${severity}</span>
+                            </div>
+                            <div class="card-body">
+                                <h6>Estimated Blockage Time: ${post.analysis.estimated_time} minutes</h6>
+                                <p>${post.analysis.analysis}</p>
+                    `;
+                    
+                    // Add factors if available
+                    if (post.analysis.factors && post.analysis.factors.length > 0) {
+                        modalContent += `<h6>Key Factors:</h6><div class="factors-list">`;
+                        post.analysis.factors.forEach(factor => {
+                            modalContent += `<div class="factor-item">${factor}</div>`;
+                        });
+                        modalContent += `</div>`;
+                    }
+                    
+                    modalContent += `
+                            </div>
+                    `;
+                } else {
+                    modalContent += `
+                            <div class="card-header">
+                                <h5 class="mb-0">AI Analysis</h5>
+                            </div>
+                            <div class="card-body">
+                                <p>No analysis available for this report.</p>
+                            </div>
+                    `;
+                }
+                
+                modalContent += `
+                        </div>
+                    </div>
+                `;
+                
+                // Add delete button container (will be updated based on active post)
+                modalContent += `
+                    <div class="d-flex justify-content-end mt-3" id="delete-button-container">
+                        ${post.is_owner ? `
+                            <button class="btn btn-danger" onclick="deletePost(${post.id})">
+                                <i class="fas fa-trash-alt me-2"></i>Delete Report
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                
+                // Update modal content if no image carousel is being loaded
+                if (!post.image_path) {
+                    updateModalContent();
+                }
+                
+                // Function to update modal content
+                function updateModalContent() {
+                    modalBody.innerHTML = modalContent;
+                }
+                
+                // Function to update blockage report based on the active post
+                function updateBlockageReport(activePost) {
+                    const reportSection = modalBody.querySelector('.blockage-report-section');
+                    if (reportSection) {
+                        reportSection.innerHTML = `
+                            <h5>Blockage Report</h5>
+                            <p>${activePost.caption}</p>
+                            <div class="d-flex justify-content-between flex-wrap">
+                                <span><strong>Reported:</strong> ${new Date(activePost.created_at).toLocaleString()}</span>
+                                <span><strong>Coordinates:</strong> ${activePost.latitude.toFixed(6)}, ${activePost.longitude.toFixed(6)}</span>
+                            </div>
+                            <div class="mt-2">
+                                <span><strong>Upload Time:</strong> ${activePost.upload_time || 'Not available'}</span>
+                            </div>
+                            <div class="mt-2">
+                                <span><strong>Estimated Clearance Time:</strong> ${activePost.estimated_clearance_time || 'Not available'}</span>
+                            </div>
+                        `;
+                        
+                        // Update AI analysis section if available
+                        updateAnalysisSection(activePost);
+                        
+                        // Update delete button visibility based on ownership
+                        updateDeleteButton(activePost);
+                    }
+                }
+                
+                // Function to update analysis section based on the active post
+                function updateAnalysisSection(activePost) {
+                    const analysisSection = modalBody.querySelector('.analysis-section');
+                    if (analysisSection && activePost.analysis) {
+                        const severity = activePost.analysis.severity || 'Unknown';
+                        analysisSection.innerHTML = `
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">AI Analysis</h5>
+                                <span class="severity-badge severity-${severity}">${severity}</span>
+                            </div>
+                            <div class="card-body">
+                                <h6>Estimated Blockage Time: ${activePost.analysis.estimated_time} minutes</h6>
+                                <p>${activePost.analysis.analysis}</p>
+                                ${renderFactors(activePost.analysis)}
+                            </div>
+                        `;
+                    } else if (analysisSection) {
+                        // Show loading indicator while fetching analysis data
+                        if (activePost.has_analysis && !activePost.analysis) {
+                            analysisSection.innerHTML = `
+                                <div class="card-header">
+                                    <h5 class="mb-0">AI Analysis</h5>
+                                </div>
+                                <div class="card-body text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading analysis data...</p>
+                                </div>
+                            `;
+                        } else {
+                            analysisSection.innerHTML = `
+                                <div class="card-header">
+                                    <h5 class="mb-0">AI Analysis</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>No analysis available for this report.</p>
+                                </div>
+                            `;
+                        }
+                    }
+                }
+                
+                // Helper function to render factors
+                function renderFactors(analysis) {
+                    if (analysis.factors && analysis.factors.length > 0) {
+                        let factorsHtml = `<h6>Key Factors:</h6><div class="factors-list">`;
+                        analysis.factors.forEach(factor => {
+                            factorsHtml += `<div class="factor-item">${factor}</div>`;
+                        });
+                        factorsHtml += `</div>`;
+                        return factorsHtml;
+                    }
+                    return '';
+                }
+                
+                // Function to update delete button based on post ownership
+                function updateDeleteButton(activePost) {
+                    const deleteButtonContainer = modalBody.querySelector('#delete-button-container');
+                    if (deleteButtonContainer) {
+                        if (activePost.is_owner) {
+                            deleteButtonContainer.innerHTML = `
+                                <button class="btn btn-danger" onclick="deletePost(${activePost.id})">
+                                    <i class="fas fa-trash-alt me-2"></i>Delete Report
+                                </button>
+                            `;
+                        } else {
+                            deleteButtonContainer.innerHTML = '';
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching post details:', error);
+                modalBody.innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-circle me-2"></i>Error loading analysis. Please try again.
+                    </div>
+                `;
+            });
+    }
+
+    // Check if user is authenticated and show login overlay if not
+    {% if not current_user.is_authenticated %}
+    const actionButtons = document.querySelectorAll('.action-btn');
+    actionButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('authOverlay').style.display = 'flex';
+        });
+    });
+    {% endif %}
+
+    // Close auth overlay
+    function closeAuthOverlay() {
+        document.getElementById('authOverlay').style.display = 'none';
+    }
+    
+    // Function to delete a post
+    function deletePost(postId) {
+        if (confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
+            fetch(`/post/${postId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close the modal
+                    const analysisModal = bootstrap.Modal.getInstance(document.getElementById('analysisModal'));
+                    analysisModal.hide();
+                    
+                    // Show success message
+                    alert('Report deleted successfully!');
+                    
+                    // Refresh the map
+                    location.reload();
+                } else {
+                    alert(`Error: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting post:', error);
+                alert('An error occurred while deleting the report. Please try again.');
+            });
+        }
+    }
+</script>
+{% endblock %}
