@@ -1,0 +1,90 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+
+h1 {
+    color: #007bff;
+    margin-bottom: 20px;
+}
+
+.input-section {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 300px; /* Set a fixed width for the input section */
+}
+
+label {
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="text"] {
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+button {
+    padding: 10px;
+    background-color: #007bff; /* Primary button color */
+    color: white; /* Button text color */
+    border: none; /* Remove default border */
+    border-radius: 4px; /* Rounded corners */
+    cursor: pointer; /* Pointer cursor on hover */
+    transition: background-color 0.3s; /* Smooth transition for hover effect */
+}
+
+button:hover {
+    background-color: #0056b3; /* Darker shade on hover */
+}
+
+.leaflet-container {
+    height: 600px; /* Height of the map */
+    width: 800px; /* Width of the map */
+}
+
+/* Style for the route details panel */
+.route-details-panel {
+    position: absolute; /* Fixed position on the map */
+    top: 0; /* Align to the top */
+    left: '0'; /* Align to the left */
+    width: '300px'; /* Width of the panel */
+    height: '100%'; /* Full height of the map */
+    background-color: '#fff'; /* White background for visibility */
+    box-shadow: '2px 0 5px rgba(0, 0, 0, 0.2)'; /* Shadow effect */
+}
+
+/* Optional styling for better appearance in route details panel */
+.route-details-panel h3 {
+   padding-left: '10px'; /* Padding for header */
+   margin-top: '10px'; /* Margin at the top of header */
+   margin-bottom: '10px'; /* Margin at the bottom of header */
+}
+
+.route-details-panel ul {
+   padding-left: '20px'; /* Indentation for list items */
+   list-style-type: none; /* Remove bullet points from list items */
+}
+
+.route-details-panel ul li {
+   margin-bottom: '8px'; /* Space between list items */
+}
+

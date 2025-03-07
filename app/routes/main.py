@@ -345,40 +345,8 @@ def upload_post():
     return render_template('main/upload.html')
 
 @main.route('/directions', methods=['GET', 'POST'])
-@login_required
 def get_directions():
-    """Get directions between two points"""
-    if request.method == 'POST':
-        start_lat = request.form.get('start_lat')
-        start_lng = request.form.get('start_lng')
-        end_lat = request.form.get('end_lat')
-        end_lng = request.form.get('end_lng')
-        
-        # Validate inputs
-        if not all([start_lat, start_lng, end_lat, end_lng]):
-            flash('Please provide both start and end locations', 'danger')
-            return redirect(request.url)
-        
-        # Convert to float
-        try:
-            start_lat = float(start_lat)
-            start_lng = float(start_lng)
-            end_lat = float(end_lat)
-            end_lng = float(end_lng)
-        except ValueError:
-            flash('Invalid coordinates provided', 'danger')
-            return redirect(request.url)
-        
-        # Store in session for the template to use
-        session_data = {
-            'start': {'lat': start_lat, 'lng': start_lng},
-            'end': {'lat': end_lat, 'lng': end_lng}
-        }
-        
-        return render_template('main/directions.html', route_data=session_data)
-    
-    return render_template('main/directions.html')
-
+    return redirect('http://localhost:3001/')
 @main.route('/api/calculate_route', methods=['POST'])
 @login_required
 def calculate_route():
